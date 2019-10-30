@@ -1,0 +1,6 @@
+/out/*
+/target/*
+.idea
+
+meta_Electronics.json
+reviews_Electronics_5.json
