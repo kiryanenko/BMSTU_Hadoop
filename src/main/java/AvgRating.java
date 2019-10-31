@@ -20,54 +20,53 @@ import org.json.simple.parser.ParseException;
 
 import java.io.IOException;
 
-// Start hadoop:
+// Запуск hadoop:
 // /usr/local/Cellar/hadoop/3.2.1/sbin/start-dfs.sh
 // /usr/local/Cellar/hadoop/3.2.1/sbin/start-yarn.sh
 // mapred --daemon start historyserver
 
-// To run:
+// Команды для старта:
 // hadoop dfs -rm -r -f /avg_rating
 // yarn jar ./out/artifacts/HW1/HW1.jar AvgRating -D mapred.textoutputformat.separator="," -D mapreduce.job.reduces=2 /reviews_Electronics_5.json /avg_rating
 
 public class AvgRating  extends Configured implements Tool {
 
+    // Класс отображения, на вход подаются записи отзывом о продукте в формате JSON
+    // На выход отдает id продукта и оценку
     public static class VoteMapper extends Mapper<LongWritable, Text, Text, DoubleWritable> {
         private final JSONParser jsonParser = new JSONParser();
         private final Text product = new Text();
         private final DoubleWritable vote = new DoubleWritable();
 
-        /**
-         * Called once for each key/value pair in the input split.
-         *
-         * @param key       a document offset
-         * @param value     a text string
-         * @param context   a application context
-         * @throws IOException
-         * @throws InterruptedException
-         */
+        // Функция отображения, которая вызывается для каждой записи в файле
         public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
             try {
+                // Распарсиваю JSON c отзывом
                 JSONObject review = (JSONObject) jsonParser.parse(value.toString());
-                // Set the word to serializable class
+                // Достаю id продукта и оценку
                 product.set((String) review.get("asin"));
                 vote.set((double) review.get("overall"));
-                // Emmit the key-value pair: (word, 1)
+                // Отдаю их на выход
                 context.write(product, vote);
             } catch (ParseException e) {
                 e.printStackTrace();
             }
-
         }
     }
 
 
+    // Класс свертки, на вход как ключ подается id продукта и массив оценок, соответствующих этому продукту
+    // На выход отдает id продукта и среднюю оценку
     public static class VoteAvgReducer extends Reducer<Text,DoubleWritable,Text,DoubleWritable> {
 
         private DoubleWritable result = new DoubleWritable();
 
+        // Функция свертки
+        // На вход получает id продукта как ключ и оценки как значения
         public void reduce(Text key, Iterable<DoubleWritable> values, Context context)
                 throws IOException, InterruptedException {
 
+            // Подсчитываю среднюю оценку
             double sum = 0;
             long count = 0;
             for (DoubleWritable vote : values) {
@@ -75,44 +74,37 @@ public class AvgRating  extends Configured implements Tool {
                 ++count;
             }
             result.set(sum / count);
+            // Отдаю результат
             context.write(key, result);
         }
     }
 
     public int run(String[] args) throws Exception {
-        // Create a new MapReduce job
+        // Создаю MapReduce задачу
         Job job = Job.getInstance(getConf(), "AvgRating");
-        //  Set the Jar by finding where a given class came from
         job.setJarByClass(AvgRating.class);
-        // Set the Mapper for the job
+        // Устанавливаю класс отображения
         job.setMapperClass(VoteMapper.class);
-        // Set the Reducer for the job
+        // Устанавливаю класс свертки
         job.setReducerClass(VoteAvgReducer.class);
-        // Set the key class for the job output data
+        // На выходе как ключ будет id продукта
         job.setOutputKeyClass(Text.class);
-        // Set the value class for job outputs
+        // На выходе как значение будет средняя оценка
         job.setOutputValueClass(DoubleWritable.class);
 
-        // Add a Path to the list of inputs for the map-reduce job
+        // Путь до входного файла
         FileInputFormat.addInputPath(job, new Path(args[0]));
-        // Set the Path of the output directory for the map-reduce job.
+        // Путь до выходной директории
         final Path output_dir = new Path(args[1]);
         FileOutputFormat.setOutputPath(job, output_dir);
 
-        // Submit the job to the cluster and wait for it to finish
+        // Запускаю задачу и жду ее окончания
         return job.waitForCompletion(true) ? 0 : 1;
     }
 
     public static void main(String[] args) throws Exception {
         Configuration conf = new Configuration();
-
         System.out.println("Start AvgRating");
-
-        /*
-          Runs the given Tool by Tool.run(String[]), after
-          parsing with the given generic arguments. Uses the given
-          Configuration, or builds one if null.
-         */
         System.exit(ToolRunner.run(conf, new AvgRating(), args));
     }
 }

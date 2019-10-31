@@ -1,5 +1,5 @@
-// Реализуйте подсчет среднего рейтинга продуктов. Результат сохранить в HDFS в файле "avg_rating.csv".
-// Формат каждой записи: ProdId, Rating
+// Напишите программу, которая выводит средний рейтинги всех продуктов из "prodname_avg_rating.csv",
+// в названии которых встречается введенное при запуске слово: ProdId,Name,Rating
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
@@ -15,17 +15,19 @@ import org.apache.hadoop.util.ToolRunner;
 
 import java.io.IOException;
 
-// Start hadoop:
+// Запуск hadoop:
 // /usr/local/Cellar/hadoop/3.2.1/sbin/start-dfs.sh
 // /usr/local/Cellar/hadoop/3.2.1/sbin/start-yarn.sh
 // mapred --daemon start historyserver
 
-// To run:
+// Команды для старта:
 // hadoop dfs -rm -r -f /filter_prod_name_avg_rating
 // yarn jar ./out/artifacts/HW1/HW1.jar FilterProdNameAvgRating -D mapred.textoutputformat.separator="," -D mapreduce.job.reduces=2 canon /prodname_avg_rating /filter_prod_name_avg_rating
 
 public class FilterProdNameAvgRating  extends Configured implements Tool {
 
+    // Класс отображения, на вход подаются строки из файла с записью вида: id,name,rating
+    // На выход отдает записи продуктов, которые содержат искомую строку
     public static class FilterProdNameAvgRatingMapper extends Mapper<LongWritable, Text, Text, Text> {
         private String search;
         private final Text id = new Text();
@@ -33,11 +35,18 @@ public class FilterProdNameAvgRating  extends Configured implements Tool {
 
         protected void setup(Context context) throws IOException, InterruptedException {
             Configuration conf = context.getConfiguration();
+            // Из конфига достаю искомую строку
             search = conf.get("search").toLowerCase();
         }
 
+        // Функция отображения, которая вызывается для каждой записи
         public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+            // Разбиваю запись по запятой
+            // id = data[0]
+            // name = data[1]
+            // rating = data[2]
             String[] data = value.toString().split(",", 3);
+            // Если запись содержит искомую строку, то отдаю ее на выход
             if (data.length >= 3 && data[1].toLowerCase().contains(search)) {
                 id.set(data[0]);
                 nameRating.set(data[1] + ',' + data[2]);
@@ -53,38 +62,31 @@ public class FilterProdNameAvgRating  extends Configured implements Tool {
         final Path outputPath = new Path(args[2]);
 
         Configuration conf = getConf();
+        // Устанавливаю в конфиг искомую строку
         conf.set("search", search);
 
-        // Create a new MapReduce job
+        // Создаю MapReduce задачу
         Job job = Job.getInstance(conf, "FilterProdNameAvgRating");
-        //  Set the Jar by finding where a given class came from
         job.setJarByClass(FilterProdNameAvgRating.class);
-        // Set the Mapper for the job
+        // Устанавливаю класс отображения
         job.setMapperClass(FilterProdNameAvgRatingMapper.class);
-        // Set the key class for the job output data
+        // На выходе как ключ будет id продукта
         job.setOutputKeyClass(Text.class);
-        // Set the value class for job outputs
+        // На выходе как значение будет название, средняя оценка
         job.setOutputValueClass(Text.class);
 
-        // Add a Path to the list of inputs for the map-reduce job
+        // Путь до входной директории
         FileInputFormat.addInputPath(job, inputPath);
-        // Set the Path of the output directory for the map-reduce job.
+        // Путь до выходной директории
         FileOutputFormat.setOutputPath(job, outputPath);
 
-        // Submit the job to the cluster and wait for it to finish
+        // Запускаю задачу и жду ее окончания
         return job.waitForCompletion(true) ? 0 : 1;
     }
 
     public static void main(String[] args) throws Exception {
         Configuration conf = new Configuration();
-
         System.out.println("Start FilterProdNameAvgRating");
-
-        /*
-          Runs the given Tool by Tool.run(String[]), after
-          parsing with the given generic arguments. Uses the given
-          Configuration, or builds one if null.
-         */
         System.exit(ToolRunner.run(conf, new FilterProdNameAvgRating(), args));
     }
 }
